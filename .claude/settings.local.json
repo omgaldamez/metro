@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/ogald/OneDrive/Escritorio/RedMetro/metro -name .* -type f)"
+    ]
+  }
+}

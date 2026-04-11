@@ -91,6 +91,17 @@ body.light .wp{background:rgba(240,235,227,.94)}.wp.show{display:block}
 body.light .rad-info b{color:#8b6d38}
 .rad-near{background:var(--card);border:1px solid var(--border);border-radius:5px;padding:5px 7px;margin-top:5px;font-size:.5rem;line-height:1.5}
 .rad-near .hl{color:var(--green);font-weight:600}
+.rad-filter{display:flex;gap:3px;flex-wrap:wrap;margin-top:5px}
+.rfb{font-family:var(--mono);font-size:.46rem;padding:2px 5px;border-radius:3px;border:1px solid var(--border);color:var(--text2);cursor:pointer;transition:all .12s;background:transparent;white-space:nowrap}
+.rfb:hover{border-color:var(--accent);color:var(--text)}.rfb.on{background:rgba(79,195,247,.18);border-color:var(--accent);color:var(--accent)}
+body.light .rfb.on{background:rgba(139,109,56,.15);border-color:#8b6d38;color:#8b6d38}
+.walk-note{margin-top:4px;background:rgba(255,167,38,.08);border:1px solid rgba(255,167,38,.3);border-radius:4px;padding:4px 6px;font-size:.45rem;color:var(--orange);line-height:1.5;display:none}
+.walk-note.show{display:block}
+.rni{display:flex;align-items:center;gap:3px;padding:2px 0;border-bottom:1px solid var(--border);font-size:.46rem}
+.rni:last-child{border-bottom:none}.rni-nm{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.rni-d{color:var(--text3);font-family:var(--mono);font-size:.42rem;white-space:nowrap}
+.rni-b{font-size:.4rem;padding:0 2px;border-radius:2px;flex-shrink:0}
+.b-acc{background:rgba(102,187,106,.2);color:var(--green)}.b-elev{background:rgba(79,195,247,.2);color:var(--accent)}.b-ee{background:rgba(255,167,38,.2);color:var(--orange)}
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 </style>
 </head>
@@ -145,6 +156,15 @@ body.light .rad-info b{color:#8b6d38}
       <input type="range" id="radRange" class="rad-range" min="3" max="15" value="8" step="1">
       <div class="rad-info"><b id="radKm">8</b> km · <span id="radCount">0</span> estaciones en rango</div>
       <div class="rad-near" id="radNear"></div>
+      <div id="walkNote" class="walk-note"></div>
+      <div class="st2" style="margin-top:6px">Filtrar por</div>
+      <div class="rad-filter" id="radFilter">
+        <div class="rfb on" data-f="all">Todos</div>
+        <div class="rfb" data-f="acc">♿ Acc</div>
+        <div class="rfb" data-f="elev">Elevador</div>
+        <div class="rfb" data-f="ee">Esc.Eléc</div>
+        <div class="rfb" data-f="elevee">Elev+EE</div>
+      </div>
     </div>
     <div class="ss">
       <div class="st2">Ruta</div>
@@ -182,7 +202,7 @@ let NODES=[],EDGES=[],LO={},TF=[];
 let POS={};
 const Z={x:0,y:0,s:1};
 const S={src:null,tgt:null,routes:[],sel:null,hid:new Set(),pcd:false,mode:'sch',sz:false,
-  radCenter:'AICM (Aeropuerto)',radMax:8,radNearest:null,radNearestAcc:null};
+  radCenter:'AICM (Aeropuerto)',radMax:8,radNearest:null,radNearestAcc:null,radFilterMode:'all'};
 
 // ═══════ HAVERSINE ═══════
 function hav(lat1,lon1,lat2,lon2){
@@ -285,13 +305,10 @@ function lRad(){
   // Update radial info
   document.getElementById('radCount').textContent=inRange;
   const ni=document.getElementById('radNear');
-  if(S.radNearest){
-    const nn=N(S.radNearest),na=S.radNearestAcc?N(S.radNearestAcc):null;
-    let h=`Más cercana: <span class="hl">${S.radNearest.replace(/_/g,' ')}</span> (${minD.toFixed(1)} km)`;
-    if(na&&na.id!==nn.id)h+=`<br>Accesible ♿: <span class="hl">${S.radNearestAcc.replace(/_/g,' ')}</span> (${minDAcc.toFixed(1)} km)`;
-    else if(na)h+=` · ♿ accesible`;
-    ni.innerHTML=h;
-  }
+  const nearList=NODES.filter(n=>POS[n.id]&&!POS[n.id].outside).map(n=>({n,d:POS[n.id].dist})).sort((a,b)=>a.d-b.d).slice(0,5);
+  let nih='';nearList.forEach(({n,d})=>{const nm=n.id.replace(/_/g,' ').replace(/ (1|2|3|4|5|6|7|8|9|12|A|B)$/,'');const bs=(n.Accesibilidad==='Si'?'<span class="rni-b b-acc">♿</span>':'')+(n.Elevador==='Si'?'<span class="rni-b b-elev">E</span>':'')+(n.EE==='Si'?'<span class="rni-b b-ee">EE</span>':'');nih+=`<div class="rni"><span class="rni-nm" style="border-left:2px solid ${LC[n.Linea]};padding-left:3px">${nm}</span><span class="rni-d">${d.toFixed(1)}km</span>${bs}</div>`});
+  ni.innerHTML=nih||'<span style="color:var(--text3)">Sin estaciones en rango</span>';
+  const wn=document.getElementById('walkNote');if(wn){const nn=N(S.radNearest);if(nn&&nn.Accesibilidad!=='Si'&&S.radNearestAcc&&S.radNearestAcc!==S.radNearest){const na2=N(S.radNearestAcc);const extraKm=na2?hav(+nn.lat,+nn.lng,+na2.lat,+na2.lng):0;const mins=Math.round(extraKm*60/5);wn.innerHTML=`⚠ Est. más cercana no accesible<br>Caminata: ~${extraKm.toFixed(1)} km (≈${mins} min) → <b>${S.radNearestAcc.replace(/_/g,' ')}</b>`;wn.classList.add('show')}else{wn.classList.remove('show')}}
   // Auto-set source for routing
   S.src=S.radNearest;document.getElementById('ss').value=S.radNearest||'';
 }
@@ -388,6 +405,9 @@ function renderRadial(){
     if(np&&!np.outside)h+=`<line x1="${cx}" y1="${cy}" x2="${np.x}" y2="${np.y}" stroke="var(--green)" stroke-width="1" stroke-dasharray="3,2" opacity="0.3"/>`;
   }
 
+  // Route path lines (drawn before nodes so they appear behind)
+  if(rt&&rt.path.length>1){for(let i=0;i<rt.path.length-1;i++){const a=rt.path[i],b=rt.path[i+1];const pa2=POS[a],pb2=POS[b];if(!pa2||!pb2||pa2.outside||pb2.outside)continue;const na2=N(a);h+=`<line x1="${pa2.x}" y1="${pa2.y}" x2="${pb2.x}" y2="${pb2.y}" stroke="${na2?LC[na2.Linea]:'var(--accent)'}" stroke-width="3" stroke-linecap="round" opacity="0.9"/>`;}}
+
   // Nodes — sorted so outside ones render first (behind)
   const sorted=[...NODES].sort((a,b)=>{const pa=POS[a.id],pb=POS[b.id];return (pb?.outside?1:0)-(pa?.outside?1:0)});
   for(const nd of sorted){
@@ -411,6 +431,9 @@ function renderRadial(){
     if(isNearAcc&&!isNearest){sk='var(--green)';sw=2.5;r=7;op=1}
     if(isTgt){fl='var(--green)';sk='#fff';sw=2.5;r=8;op=1}
     if(ip){fl=col;sk='#fff';sw=2;op=1}
+    // Filter dimming
+    const flt=S.radFilterMode;const matchF=flt==='all'||(flt==='acc'&&acc)||(flt==='elev'&&nd.Elevador==='Si')||(flt==='ee'&&nd.EE==='Si')||(flt==='elevee'&&(nd.Elevador==='Si'||nd.EE==='Si'));
+    if(!matchF&&!isNearest&&!isNearAcc&&!isTgt&&!ip)op*=0.1;
 
     // Line from center (spoke)
     h+=`<line x1="${cx}" y1="${cy}" x2="${p.x}" y2="${p.y}" stroke="${col}" stroke-width="0.5" opacity="${ip?0.5:0.12}"/>`;
@@ -430,6 +453,11 @@ function renderRadial(){
       h+=`<text x="${p.x}" y="${p.y-r-3}" text-anchor="middle" fill="var(--lbl)" font-size="6" font-family="'DM Sans'" font-weight="${isNearest||isNearAcc?700:400}" opacity="0.75">${dn}</text>`;
       h+=`<text x="${p.x}" y="${p.y-r-3+8}" text-anchor="middle" fill="var(--text3)" font-size="5" font-family="var(--mono)" opacity="0.5">${p.dist.toFixed(1)} km</text>`;
     }
+    // Accessibility badges
+    let bx=p.x+r+2;const by=p.y;
+    if(acc){h+=`<text x="${bx}" y="${by+2.5}" font-size="6" font-family="'DM Sans'" opacity="${op*0.9}" fill="var(--green)">♿</text>`;bx+=8}
+    if(nd.Elevador==='Si'){h+=`<rect x="${bx}" y="${by-3.5}" width="7" height="7" rx="1.5" fill="var(--accent)" opacity="${op*0.75}"/><text x="${bx+3.5}" y="${by+2}" text-anchor="middle" font-size="4" font-weight="700" fill="#000" font-family="var(--mono)">E</text>`;bx+=9}
+    if(nd.EE==='Si'){h+=`<rect x="${bx}" y="${by-3.5}" width="9" height="7" rx="1.5" fill="var(--orange)" opacity="${op*0.75}"/><text x="${bx+4.5}" y="${by+2}" text-anchor="middle" font-size="3.5" font-weight="700" fill="#000" font-family="var(--mono)">EE</text>`}
   }
 
   g.innerHTML=h;bindNodes();
@@ -528,6 +556,7 @@ function initUI(){
   document.getElementById('tgp').addEventListener('click',()=>{S.pcd=!S.pcd;document.getElementById('tkp').classList.toggle('on',S.pcd);if(S.src&&S.tgt)calc();else render()});
   document.getElementById('bf').addEventListener('click',calc);
   document.getElementById('bc').addEventListener('click',()=>{S.src=null;S.tgt=null;S.routes=[];S.sel=null;document.getElementById('ss').value='';document.getElementById('st').value='';rRL();render()});
+  document.querySelectorAll('#radFilter .rfb').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('#radFilter .rfb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');S.radFilterMode=btn.dataset.f;render()})});
 }
 
 load().catch(e=>{document.getElementById('si').textContent='Error: '+e.message;console.error(e)});
